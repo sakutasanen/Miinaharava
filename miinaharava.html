@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Minesweeper</title>
+	<meta charset="utf-8"/>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/0.5.9/p5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/0.5.9/addons/p5.dom.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/0.5.9/addons/p5.sound.min.js"></script>
+	<script src="https://code.jquery.com/jquery-1.11.1.min.js"></script>
+    <script>
+	function make2DArray(cols, rows) {
+		var arr = new Array(cols);
+		for (var i = 0; i < arr.length; i++) {
+			arr[i] = new Array(rows);
+		}
+		return arr;
+	}
+
+	var grid;
+	var cols;
+	var rows;
+	var w = 20;
+
+	var totalmines = 30;
+
+	var points = 0;
+
+	function setup() {
+		var canvas = createCanvas(401, 401);
+		canvas.parent('game-holder');
+		cols = floor(width / w);
+		rows = floor(height / w);
+		grid = make2DArray(cols, rows);
+		for (var i = 0; i < cols; i++) {
+			for (var j = 0; j < rows; j++) {
+				grid[i][j] = new Cell(i, j, w);
+			}
+		}
+
+		var options = [];
+		for (var i = 0; i < cols; i++) {
+			for (var j = 0; j < rows; j++) {
+				options.push([i, j]);
+			}
+		}
+
+
+		for (var n = 0; n < totalmines; n++) {
+			var index = floor(random(options.length));
+			var choice = options[index];
+			var i = choice[0];
+			var j = choice[1];
+			options.splice(index, 1);
+			grid[i][j].mine = true;
+		}
+
+
+		for (var i = 0; i < cols; i++) {
+			for (var j = 0; j < rows; j++) {
+				grid[i][j].countmines();
+			}
+		}
+
+	}
+
+	function gameOver() {
+		for (var i = 0; i < cols; i++) {
+			for (var j = 0; j < rows; j++) {
+				grid[i][j].revealed = true;
+			}
+		}
+	}
+
+	function mousePressed() {
+		for (var i = 0; i < cols; i++) {
+			for (var j = 0; j < rows; j++) {
+				if (grid[i][j].contains(mouseX, mouseY)) {
+					grid[i][j].reveal();
+
+					if (grid[i][j].mine) {
+						gameOver();
+					}
+
+				}
+			}
+		}
+	}
+
+	function draw() {
+		background(255);
+		for (var i = 0; i < cols; i++) {
+			for (var j = 0; j < rows; j++) {
+				grid[i][j].show();
+			}
+		}
+	}
+
+	function Cell(i, j, w) {
+		this.i = i;
+		this.j = j;
+		this.x = i * w;
+		this.y = j * w;
+		this.w = w;
+		this.neighborCount = 0;
+
+		this.mine = false;
+		this.revealed = false;
+	}
+
+	Cell.prototype.show = function() {
+		stroke(0);
+		noFill();
+		rect(this.x, this.y, this.w, this.w);
+		if (this.revealed) {
+			if (this.mine) {
+				fill(127);
+				ellipse(this.x + this.w * 0.5, this.y + this.w * 0.5, this.w * 0.5);
+			} else {
+				fill(200);
+				rect(this.x, this.y, this.w, this.w);
+				if (this.neighborCount > 0) {
+					textAlign(CENTER);
+					fill(0);
+					text(this.neighborCount, this.x + this.w * 0.5, this.y + this.w - 6);
+				}
+			}
+		}
+	};
+
+	Cell.prototype.countmines = function() {
+		if (this.mine) {
+			this.neighborCount = -1;
+			return;
+		}
+		var total = 0;
+		for (var xoff = -1; xoff <= 1; xoff++) {
+			var i = this.i + xoff;
+			if (i < 0 || i >= cols) continue;
+
+			for (var yoff = -1; yoff <= 1; yoff++) {
+				var j = this.j + yoff;
+				if (j < 0 || j >= rows) continue;
+
+				var neighbor = grid[i][j];
+				if (neighbor.mine) {
+					total++;
+				}
+			}
+		}
+		this.neighborCount = total;
+	};
+
+	Cell.prototype.contains = function(x, y) {
+		return (x > this.x && x < this.x + this.w && y > this.y && y < this.y + this.w);
+	};
+
+	Cell.prototype.reveal = function() {
+		if (!this.revealed) {
+			points++;
+		}
+		this.revealed = true;
+		$("#score").text(points);
+		if (this.neighborCount === 0) {
+			this.floodFill();
+		}
+	};
+
+	Cell.prototype.floodFill = function() {
+		for (var xoff = -1; xoff <= 1; xoff++) {
+			var i = this.i + xoff;
+			if (i < 0 || i >= cols) continue;
+
+			for (var yoff = -1; yoff <= 1; yoff++) {
+				var j = this.j + yoff;
+				if (j < 0 || j >= rows) continue;
+
+				var neighbor = grid[i][j];
+				if (!neighbor.revealed) {
+					neighbor.reveal();
+				}
+			}
+		}
+	};
+
+	$(document).ready(function() {
+		// Simulates "game over" when a score would be sent
+		$("#submit_score").click( function () {
+			var msg = {
+				"messageType": "SCORE",
+				"score": parseFloat($("#score").text())
+			};
+			window.parent.postMessage(msg, "*");
+		});
+
+		// Sends this game's state to the service.
+		// The format of the game state is decided
+		// by the game
+		$("#save").click( function () {
+			var msg = {
+				"messageType": "SAVE",
+				"gameState": {
+				"grid": grid,
+				"cols":cols,
+				"rows":rows,
+				"w":w,
+				"totalmines":totalmines,
+				"points": points
+				}
+			};
+			window.parent.postMessage(msg, "*");
+		});
+
+		// Sends a request to the service for a
+		// state to be sent, if there is one.
+		$("#load").click( function () {
+			var msg = {
+				"messageType": "LOAD_REQUEST",
+			};
+			window.parent.postMessage(msg, "*");
+		});
+
+		// Listen incoming messages, if the messageType
+		// is LOAD then the game state will be loaded.
+		window.addEventListener("message", function(evt) {
+		if(evt.data.messageType === "LOAD") {
+			grid = evt.data.gameState.grid;
+			cols = evt.data.gameState.cols;
+			rows = evt.data.gameState.rows;
+			w = evt.data.gameState.w;
+			totalmines = evt.data.gameState.totalmines;
+			points = evt.data.gameState.points;
+		} else if (evt.data.messageType === "ERROR") {
+			alert(evt.data.info);
+		}
+		});
+	});
+    </script>
+</head>
+
+<body>
+	<div id="game-holder"></div>
+
+	<div><span  id="score">0</span> Points</div>
+	<button id="submit_score" style=>Submit score</button>
+  	<button id="save">Save</button>
+  	<button id="load">Load</button>
+</body>
+
+</html>
